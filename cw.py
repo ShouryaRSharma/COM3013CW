@@ -84,17 +84,49 @@ class Net(torch.nn.Module):
         x = self.out(x)
         return x
 
+def extractWeightsOutOfNetwork(net):
+    outweights = (net.hidden.weight.reshape(1, 12)).tolist()
+    flattened = np.array(outweights).flatten()
+    return flattened
+
+def inputWeightsIntoNetwork(arr, net):
+    weights = np.asarray(arr)
+    reshaped = torch.nn.Parameter(torch.from_numpy(weights.reshape(6, 2)))
+    net.hidden.weight = reshaped
+    return net
+
 # Plots 3D surface plot of function
 plot3D()
 
 # Generates dataset
+print("================================================Dataset================================================")
 dataset = generate1100SamplesforX1andX2()
 
 # Splits dataset into training and testing dataset
+print("================================================Splitting Dataset================================================")
 training, testing = splitDataInto1000TrainingAnd100TestingSamples(*dataset)
 
 # Visualize training and testing dataset
 visualizeTrainingandTesting(training, testing)
 
+print("================================================Creating Network =================================================")
 # Create model with two hidden layers and 6 neurons in each
 net = Net(n_feature=2, n_hidden=6, n_output=1)
+
+# Extracted weights from network
+extractedWeights = extractWeightsOutOfNetwork(net)
+
+# Test to see if new weights can be inputed
+print("================================================Original Weights================================================")
+print(extractedWeights)
+print("================================================Changing 3 Weights==============================================")
+
+# Change weights
+extractedWeights[1] = 0.5
+extractedWeights[2] = 0.4
+extractedWeights[3] = 0.3
+net = inputWeightsIntoNetwork(extractedWeights, net)
+
+newWeights = extractWeightsOutOfNetwork(net)
+print(newWeights)
+
