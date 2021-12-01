@@ -8,11 +8,48 @@ from sympy.combinatorics.graycode import GrayCode
 from sympy.combinatorics.graycode import gray_to_bin, bin_to_gray
 from deap import creator, base, tools, algorithms
 
+class Net(torch.nn.Module):
+    # initialise two hidden layers and one output layer
+    def __init__(self, n_feature, n_hidden, n_output):
+        super(Net, self).__init__()
+        self.hidden = torch.nn.Linear(n_feature, n_hidden)
+        self.hidden2 = torch.nn.Linear(n_hidden, n_hidden)  # hidden layer
+        self.out = torch.nn.Linear(n_hidden, n_output)  # output layer
+
+    # connect up the layers: the input passes through the hidden, then the sigmoid, then the output layer
+    def forward(self, x):
+        x = F.sigmoid(self.hidden(x))
+        x = F.sigmoid(self.hidden2(x))  # activation function for hidden layer
+        x = self.out(x)
+        return x
+
+loss_func = torch.nn.MSELoss()
+totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons + 1) * output] * numOfBitsPerWeight 
+popSize = 50
+dimension = 67
+numOfBits = 30
+numOfGenerations = 15
+nElitists = 1
+crossPoints = 2 #variable not used. instead tools.cxTwoPoint
+crossProb   = 0.5
+flipProb    = 1. / (dimension * numOfBits) #bit mutate prob
+mutateprob  = .1 #mutation prob
+maxnum      = 2**numOfBits-1
+
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMax)
+
+model = Net(n_feature=2, n_hidden=6, n_output=1)
+
+toolbox = base.Toolbox()
+
+# initial y function 
 def fitness(x1, x2):
     f = np.sin(3.5*x1 + 1)*np.cos(5.5*x2)
     # f = 2 + 4.1*(x1**2) - 2.1*(x1**4) + (1/3)*(x1**6) + (x1*x2) - 4*((x2-0.05)**2) + 4*(x2**4) 
     return (f)
 
+# plots 3D space
 def plot3D():
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -30,6 +67,23 @@ def plot3D():
     ax.set_ylabel('x2')
     ax.set_zlabel('fitness')
     plt.title('3D Surface plot of the fitness function')
+    plt.show()
+
+def neuralNetwork3DSurfacePlot():
+    X = np.linspace(-1, 1, 100)
+    Y = np.linspace(-1, 1, 100)
+    combined = torch.from_numpy(np.vstack([X, Y]).T)
+
+    X, Y = np.meshgrid(X, Y)
+    Z = model(combined)
+    Z = Z.detach()
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
+    ax.set_xlabel('x1')
+    ax.set_ylabel('x2')
+    ax.set_zlabel('y')
+    plt.title('3D plot of training dataset')
     plt.show()
 
 def generate1100SamplesforX1andX2():
@@ -70,21 +124,6 @@ def visualizeTrainingandTesting(training, testing):
     plt.title('3D plot of testing dataset')
     plt.show()
 
-class Net(torch.nn.Module):
-    # initialise two hidden layers and one output layer
-    def __init__(self, n_feature, n_hidden, n_output):
-        super(Net, self).__init__()
-        self.hidden = torch.nn.Linear(n_feature, n_hidden)
-        self.hidden2 = torch.nn.Linear(n_hidden, n_hidden)  # hidden layer
-        self.out = torch.nn.Linear(n_hidden, n_output)  # output layer
-
-    # connect up the layers: the input passes through the hidden, then the sigmoid, then the output layer
-    def forward(self, x):
-        x = F.sigmoid(self.hidden(x))
-        x = F.sigmoid(self.hidden2(x))  # activation function for hidden layer
-        x = self.out(x)
-        return x
-
 def extractWeightsOutOfNetwork(nn):
     outweights = []
     for param in nn.parameters():
@@ -101,13 +140,12 @@ def inputWeightsIntoNetwork(arr, nn):
     nn.out.weight = torch.nn.Parameter(torch.from_numpy(weights[60:66].reshape(1, 6)))
     nn.out.bias = torch.nn.Parameter(torch.from_numpy(weights[66:67].reshape(1, 1)))
     return net
-
+    
 def plot(maxArr):
     print("plotting................................................................")
     # maxArr = maxArr.detach().numpy()
-    x = np.linspace(0, 2, 100)
     gen = []
-    for i in range(100):
+    for i in range(numOfGenerations):
         gen.append(i)
 
     plt.plot(gen, maxArr, label="Best Individual")
@@ -120,8 +158,43 @@ def plot(maxArr):
     plt.title("Fitness of best individual across the generations")
     plt.show()
 
-# Plots 3D surface plot of function
-# plot3D()
+# Convert chromosome to real number
+# input: list binary 1,0 of length numOfBits representing number using gray coding
+# output: real value
+def chrom2real(c):
+    indasstring=''.join(map(str, c))
+    degray=gray_to_bin(indasstring)
+    numasint=int(degray, 2) # convert to int from base 2 list
+    numinrange=-20+40*numasint/maxnum
+    return numinrange
+
+def real2Chrom(weights):
+    output = []
+    for i in range(len(weights)):
+        if weights[i] < -20:
+            weights[i] = -20
+        elif weights[i] > 20:
+            weights[i] = 20
+        numasint = (weights[i] + 20)*maxnum/40
+        binary = bin(int(numasint))[2:].zfill(30)
+        gray = bin_to_gray(binary)
+        output.append(gray)
+    output = ''.join(output)
+    output = list(output)
+    return output
+
+def getWeightFitness(individual):
+    individual = np.asarray(individual)
+    reshaped = individual.reshape(67, 30)
+    weights = []
+    for ind in reshaped:
+        ind = chrom2real(ind)
+        weights.append(ind)
+    weights = np.asarray(weights)
+    inputWeightsIntoNetwork(weights, model)
+    out = model(training[0])  # input x and predict based on x
+    loss = loss_func(out, training[1])
+    return 1/(loss.item() + 0.01),
 
 # Generates dataset
 print("================================================Dataset================================================")
@@ -156,49 +229,6 @@ newWeights = extractWeightsOutOfNetwork(net)
 print(newWeights)
 
 print("================================================Running GA================================")
-
-creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-creator.create("Individual", list, fitness=creator.FitnessMax)
-
-totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons + 1) * output] * numOfBitsPerWeight 
-popSize = 50
-dimension = 67
-numOfBits = 30
-numOfGenerations = 100
-nElitists = 1
-crossPoints = 2 #variable not used. instead tools.cxTwoPoint
-crossProb   = 0.6
-flipProb    = 1. / (dimension * numOfBits) #bit mutate prob
-mutateprob  = .1 #mutation prob
-maxnum      = 2**numOfBits-1
-
-model = Net(n_feature=2, n_hidden=6, n_output=1)
-
-toolbox = base.Toolbox()
-
-loss_func = torch.nn.MSELoss()
-# Convert chromosome to real number
-# input: list binary 1,0 of length numOfBits representing number using gray coding
-# output: real value
-def chrom2real(c):
-    indasstring=''.join(map(str, c))
-    degray=gray_to_bin(indasstring)
-    numasint=int(degray, 2) # convert to int from base 2 list
-    numinrange=-20+40*numasint/maxnum
-    return numinrange
-
-def getWeightFitness(individual):
-    individual = np.asarray(individual)
-    reshaped = individual.reshape(67, 30)
-    weights = []
-    for ind in reshaped:
-        ind = chrom2real(ind)
-        weights.append(ind)
-    weights = np.asarray(weights)
-    inputWeightsIntoNetwork(weights, model)
-    out = model(training[0])  # input x and predict based on x
-    loss = loss_func(out, training[1])
-    return 1/(loss.item() + 0.01),
 
 # Attribute generator 
 #                      define 'attr_bool' to be an attribute ('gene')
@@ -235,6 +265,8 @@ toolbox.register("mutate", tools.mutFlipBit, indpb=flipProb)
 toolbox.register("select", tools.selBest, fit_attr='fitness')
 
 arr = []
+
+
 
 def main():
     #random.seed(64)
@@ -319,3 +351,9 @@ optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 if __name__ == "__main__":
     main()
+    print(model.hidden.weight)
+    neuralNetwork3DSurfacePlot()
+    extracted = extractWeightsOutOfNetwork(model)
+    print(extracted)
+    real = real2Chrom(extracted)
+    print(real)
