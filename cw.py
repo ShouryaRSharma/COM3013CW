@@ -28,10 +28,10 @@ totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons
 popSize = 50
 dimension = 67
 numOfBits = 30
-numOfGenerations = 30
+numOfGenerations = 16
 nElitists = 1
 crossPoints = 2 #variable not used. instead tools.cxTwoPoint
-crossProb   = 0.5
+crossProb   = 0.6
 flipProb    = 1. / (dimension * numOfBits) #bit mutate prob
 mutateprob  = .1 #mutation prob
 maxnum      = 2**numOfBits-1
@@ -40,7 +40,6 @@ creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", list, fitness=creator.FitnessMax)
 
 model = Net(n_feature=2, n_hidden=6, n_output=1)
-
 toolbox = base.Toolbox()
 
 # initial y function 
@@ -90,6 +89,7 @@ def visualizeTrainingandTesting(training, testing):
     ax = fig.add_subplot(1,2,1, projection='3d')
     for i in range(len(X_train)):
         ax.scatter3D(X_train[i][0], X_train[i][1], Y_train[i], c='blue', marker='o')
+        # plt.pause(0.000001)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('fitness')
@@ -99,7 +99,7 @@ def visualizeTrainingandTesting(training, testing):
     ax = fig.add_subplot(1,2,2, projection='3d')
     for i in range(len(X_test)):
         ax.scatter3D(X_test[i][0], X_test[i][1], Y_test[i], c='red', marker='o')
-
+        # plt.pause(0.000001)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('fitness')
@@ -179,10 +179,12 @@ def real2Chrom(weights):
         gray = bin_to_gray(binary)
         output.append(gray)
     output = list(''.join(output))
+    for i in range(len(output)):
+        output[i] = int(output[i])
     return output
 
 def getWeightFitness(individual):
-    individual = np.asarray(individual)
+    individual = np.array(individual)
     reshaped = individual.reshape(67, 30)
     weights = []
     for ind in reshaped:
@@ -190,10 +192,54 @@ def getWeightFitness(individual):
         weights.append(ind)
     weights = np.asarray(weights)
     inputWeightsIntoNetwork(weights, model)
-    out = model(testing[0])  # input x and predict based on x
-    loss = loss_func(out, testing[1])
+    out = model(training[0])
+    loss = 0  # input x and predict based on x
+    loss = loss_func(out, training[1])
     return 1/(loss.item() + 0.01),
 
+def lamarckianOptimize(individual):
+    individual = np.array(individual) # convert individual to numpy array
+    reshaped = individual.reshape(67, 30) # reshape individual to 67x30
+    weights = []
+    for ind in reshaped:
+        ind = chrom2real(ind) # convert weights to real number
+        weights.append(ind)
+    weights = np.asarray(weights)
+    inputWeightsIntoNetwork(weights, model) # input weights into network
+    i = 0
+    loss = 0
+    while i < 30:
+        optimizer = torch.optim.Rprop(model.parameters()) # create optimizer for current model parameters
+        optimizer.zero_grad() 
+        out = model(training[0])
+        loss = loss_func(out, training[1])
+        loss.backward()
+        optimizer.step() # 
+        i += 1  
+    updatedWeights = extractWeightsOutOfNetwork(model) # extract weights from network
+    newInd = real2Chrom(updatedWeights) # convert weights to gray coded individual
+    return newInd
+
+def baldwinianLearning(individual):
+    individual = np.array(individual) # convert individual to numpy array
+    reshaped = individual.reshape(67, 30) # reshape individual to 67x30
+    weights = []
+    for ind in reshaped:
+        ind = chrom2real(ind) # convert weights to real number
+        weights.append(ind)
+    weights = np.asarray(weights)
+    inputWeightsIntoNetwork(weights, model) # input weights into network
+    i = 0
+    loss = 0
+    while i < 30:
+        optimizer = torch.optim.Rprop(model.parameters()) # create optimizer for current model parameters
+        optimizer.zero_grad() 
+        out = model(training[0])
+        loss = loss_func(out, training[1])
+        loss.backward()
+        optimizer.step() # 
+        i += 1  
+    return 1/(loss.item() + 0.01),
 # plot3D()
 
 # Generates dataset
@@ -285,16 +331,23 @@ def main():
         ind.fitness.values = fit
     
     print("  Evaluated %i individuals" % len(pop))
-
     # Extracting all the fitnesses of 
     fits = [ind.fitness.values[0] for ind in pop]
-
+    
     # Variable keeping track of the number of generations
     g = 0
     
     # Begin the evolution
     while g < numOfGenerations:
         # A new generation
+        best_init = tools.selBest(pop, 1)[0]
+        best_init = lamarckianOptimize(best_init)
+        fitnesses = list(map(toolbox.evaluate, pop))
+        #print(fitnesses)
+        for ind, fit in zip(pop, fitnesses):
+            #print(ind, fit)
+            ind.fitness.values = fit
+
         g = g + 1
 #         for individ in pop:
 #             print(individ)
@@ -343,15 +396,13 @@ def main():
         # The population is entirely replaced by the offspring
         pop[:] = offspring
     plot(arr)
-# train model on training dataset
-# print("================================================Training Model================================================")
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 if __name__ == "__main__":
     main()
-    print(model.hidden.weight)
     neuralNetwork3DSurfacePlot()
+    print("================================================Extracting Weights out of Network================================================")
     extracted = extractWeightsOutOfNetwork(model)
     print(extracted)
+    print("================================================Converting weights to individual==============================================")
     real = real2Chrom(extracted)
     print(real)
