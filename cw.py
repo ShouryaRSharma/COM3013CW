@@ -18,8 +18,8 @@ class Net(torch.nn.Module):
 
     # connect up the layers: the input passes through the hidden, then the sigmoid, then the output layer
     def forward(self, x):
-        x = F.sigmoid(self.hidden(x))
-        x = F.sigmoid(self.hidden2(x))  # activation function for hidden layer
+        x = F.sigmoid(self.hidden(x)) # activation function for hidden layer
+        x = F.sigmoid(self.hidden2(x))  # activation function for hidden layer 2
         x = self.out(x)
         return x
 
@@ -28,7 +28,7 @@ totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons
 popSize = 50
 dimension = 67
 numOfBits = 30
-numOfGenerations = 15
+numOfGenerations = 30
 nElitists = 1
 crossPoints = 2 #variable not used. instead tools.cxTwoPoint
 crossProb   = 0.5
@@ -53,37 +53,16 @@ def fitness(x1, x2):
 def plot3D():
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
-    X = np.linspace(-1, 1, 100)
-    Y = np.linspace(-1, 1, 100)
-    # print(X)
-    # Z = fitness(X, Y)
-    # 
-    # print(Z) 
-    X, Y = np.meshgrid(X, Y)
-    Z = fitness(X, Y)
+    x1 = np.linspace(-1, 1, 100)
+    x2 = np.linspace(-1, 1, 100)
+    x1, x2 = np.meshgrid(x1, x2)
+    Z = fitness(x1, x2)
     
-    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
+    ax.plot_surface(x1, x2, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('fitness')
     plt.title('3D Surface plot of the fitness function')
-    plt.show()
-
-def neuralNetwork3DSurfacePlot():
-    X = np.linspace(-1, 1, 100)
-    Y = np.linspace(-1, 1, 100)
-    combined = torch.from_numpy(np.vstack([X, Y]).T)
-
-    X, Y = np.meshgrid(X, Y)
-    Z = model(combined)
-    Z = Z.detach()
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
-    ax.set_xlabel('x1')
-    ax.set_ylabel('x2')
-    ax.set_zlabel('y')
-    plt.title('3D plot of training dataset')
     plt.show()
 
 def generate1100SamplesforX1andX2():
@@ -109,14 +88,17 @@ def visualizeTrainingandTesting(training, testing):
     X_test, Y_test = testing
     fig = plt.figure(figsize=(26, 6))
     ax = fig.add_subplot(1,2,1, projection='3d')
-    ax.scatter(X_train[0], X_train[1], Y_train, c='blue', marker='o')
+    for i in range(len(X_train)):
+        ax.scatter3D(X_train[i][0], X_train[i][1], Y_train[i], c='blue', marker='o')
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('fitness')
+    ax.view_init(80, 30)
     plt.title('3D plot of training dataset')
     # ax.scatter(X1_test, X2_test, Y_test, c='black', marker='o')
     ax = fig.add_subplot(1,2,2, projection='3d')
-    ax.scatter3D(X_test[0], X_test[1], Y_test, c='red', marker='o')
+    for i in range(len(X_test)):
+        ax.scatter3D(X_test[i][0], X_test[i][1], Y_test[i], c='red', marker='o')
 
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
@@ -140,7 +122,24 @@ def inputWeightsIntoNetwork(arr, nn):
     nn.out.weight = torch.nn.Parameter(torch.from_numpy(weights[60:66].reshape(1, 6)))
     nn.out.bias = torch.nn.Parameter(torch.from_numpy(weights[66:67].reshape(1, 1)))
     return net
-    
+
+def neuralNetwork3DSurfacePlot():
+    X = np.linspace(-1, 1, 100)
+    Y = np.linspace(-1, 1, 100)
+    combined = torch.from_numpy(np.vstack([X, Y]).T)
+
+    X, Y = np.meshgrid(X, Y)
+    Z = model(combined)
+    Z = Z.detach()
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
+    ax.set_xlabel('x1')
+    ax.set_ylabel('x2')
+    ax.set_zlabel('y')
+    plt.title('3D surface plot of fitness function implemented by the neural network')
+    plt.show()
+
 def plot(maxArr):
     print("plotting................................................................")
     # maxArr = maxArr.detach().numpy()
@@ -155,7 +154,7 @@ def plot(maxArr):
     plt.ylabel("Fitness")
     plt.xlim(left=0)
     plt.ylim(bottom=0)
-    plt.title("Fitness of best individual across the generations")
+    plt.title("Fitness of best individual from the testing dataset across the generations")
     plt.show()
 
 # Convert chromosome to real number
@@ -179,8 +178,7 @@ def real2Chrom(weights):
         binary = bin(int(numasint))[2:].zfill(30)
         gray = bin_to_gray(binary)
         output.append(gray)
-    output = ''.join(output)
-    output = list(output)
+    output = list(''.join(output))
     return output
 
 def getWeightFitness(individual):
@@ -192,9 +190,11 @@ def getWeightFitness(individual):
         weights.append(ind)
     weights = np.asarray(weights)
     inputWeightsIntoNetwork(weights, model)
-    out = model(training[0])  # input x and predict based on x
-    loss = loss_func(out, training[1])
+    out = model(testing[0])  # input x and predict based on x
+    loss = loss_func(out, testing[1])
     return 1/(loss.item() + 0.01),
+
+# plot3D()
 
 # Generates dataset
 print("================================================Dataset================================================")
@@ -265,8 +265,6 @@ toolbox.register("mutate", tools.mutFlipBit, indpb=flipProb)
 toolbox.register("select", tools.selBest, fit_attr='fitness')
 
 arr = []
-
-
 
 def main():
     #random.seed(64)
@@ -346,7 +344,7 @@ def main():
         pop[:] = offspring
     plot(arr)
 # train model on training dataset
-print("================================================Training Model================================================")
+# print("================================================Training Model================================================")
 optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
 if __name__ == "__main__":
