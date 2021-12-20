@@ -30,9 +30,9 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu") # cuda i
 loss_func = torch.nn.MSELoss()
 totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons + 1) * output] * numOfBitsPerWeight 
 popSize = 50
-dimension = 67
-numOfBits = 30
-numOfGenerations = 30
+dimension = 67 # number of dimensions
+numOfBits = 30 # number of bits per weight
+numOfGenerations = 30 # number of generations to run
 nElitists = 1
 crossPoints = 2 #variable not used. instead tools.cxTwoPoint
 crossProb   = 0.6
@@ -128,7 +128,7 @@ def visualizeTrainingandTesting(training, testing):
 def extractWeightsOutOfNetwork(nn):
     outweights = []
     for param in nn.parameters():
-        data = Tensor.cpu(param.data)
+        data = Tensor.cpu(param.data) # convert cpu to tensor to perform numpy operations
         flattened = (np.array(data).flatten()).tolist()
         outweights += flattened
     return outweights
@@ -316,9 +316,12 @@ net = Net(n_feature=2, n_hidden=6, n_output=1).to(device)
 # Extracted weights from network
 extractedWeights = extractWeightsOutOfNetwork(net)
 
-# Test to see if new weights can be inputed
-print("================================================Original Weights================================================")
+# Test to see if new weights can be inputted
+print("================================================Weights================================================")
 print(extractedWeights)
+print("================================================Weights from first layer================================================")
+print(net.hidden.weight)
+print(extractedWeights[:12])
 print("================================================Changing 3 Weights==============================================")
 
 # Change weights
