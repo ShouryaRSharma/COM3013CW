@@ -216,6 +216,10 @@ def getWeightFitness(individual):
     weights = []
     for ind in reshaped:
         ind = chrom2real(ind)
+        if ind < -20:
+            ind = -20
+        elif ind > 20:
+            ind = 20
         weights.append(ind)
     weights = np.asarray(weights) # create array of weights as real numbers
     inputWeightsIntoNetwork(weights, model) # update model with new weights
