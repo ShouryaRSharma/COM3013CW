@@ -32,15 +32,14 @@ totalBits = 67*30 # [(input size + 1) * numOfHiddenNeurons + (numOfHiddenNeurons
 popSize = 50
 dimension = 67 # number of dimensions
 numOfBits = 30 # number of bits per weight
-numOfGenerations = 30 # number of generations to run
+numOfGenerations = 250 # number of generations to run
 nElitists = 1
-crossPoints = 2 #variable not used. instead tools.cxTwoPoint
 crossProb   = 0.6
 flipProb    = 1. / (dimension * numOfBits) #bit mutate prob
-mutateprob  = .1 #mutation prob
+mutateprob  = .2 #mutation prob
 maxnum      = 2**numOfBits-1
 
-creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+creator.create("FitnessMin", base.Fitness, weights=(-1.0, ))
 creator.create("Individual", list, fitness=creator.FitnessMin)
 
 # intitialize neural network to GPU
@@ -50,7 +49,7 @@ toolbox = base.Toolbox()
 
 # initial y function 
 def fitness(x1, x2):
-    f = np.sin(3.5*x1 + 1)*np.cos(5.5*x2)
+    f = np.sin(3.5 * x1 + 1) * np.cos(5.5 * x2)
     # f = 2 + 4.1*(x1**2) - 2.1*(x1**4) + (1/3)*(x1**6) + (x1*x2) - 4*((x2-0.05)**2) + 4*(x2**4) 
     return (f)
 
@@ -62,7 +61,7 @@ def plot3D():
     x2 = np.linspace(-1, 1, 100)
     x1, x2 = np.meshgrid(x1, x2)
     Z = fitness(x1, x2)
-    
+
     ax.plot_surface(x1, x2, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
@@ -87,7 +86,7 @@ def splitDataInto1000TrainingAnd100TestingSamples(X1, X2, Y):
     X_train = torch.from_numpy(np.vstack((X1[:1000], X2[:1000])).T).to(device)
     # transforms y (output) into a tensor
     Y_train = torch.from_numpy(Y[:1000]).to(device)
-
+    
     # Testing dataset
     # transforms x1 and x2 into a 2d array of tensors
     X_test = torch.from_numpy(np.vstack((X1[1000:], X2[1000:])).T).to(device)
@@ -95,7 +94,6 @@ def splitDataInto1000TrainingAnd100TestingSamples(X1, X2, Y):
     Y_test = torch.from_numpy(Y[1000:]).to(device)
     training = (X_train, Y_train)
     testing = (X_test, Y_test)
-    
     return training, testing
 
 # creates 3D scatter plot of the training and testing dataset
@@ -149,14 +147,36 @@ def inputWeightsIntoNetwork(arr, nn):
 def neuralNetwork3DSurfacePlot():
     X = np.linspace(-1, 1, 100)
     Y = np.linspace(-1, 1, 100)
-    combined = torch.from_numpy(np.vstack([X, Y]).T).to(device)
-
+    # combined = torch.from_numpy(np.vstack([X, Y]).T).to(device)
     X, Y = np.meshgrid(X, Y)
-    Z = model(combined)
-    Z = Tensor.cpu(Z).detach()
+    test = []
+
+    for i in range(len(X)):
+        for j in range(len(X[i])):
+            test.append([X[i][j], Y[i][j]])
+
+    testArr = torch.as_tensor(np.asarray(test)).to(device)
+    newZ = []
+
+    Z = model(testArr)
+    Z = Tensor.cpu(Z).detach().numpy()
+    for i in range(0,len(Z), 100):
+        tmp = []
+        for j in range(i,i+100):
+            tmp.append(Z[j][0])
+        newZ.append(tmp)
+
+    pls = np.asarray(newZ)
+
+    # plt.contour(X,Y,pls)
+    # combined = torch.from_numpy(np.array([X, Y])).to(device)
+    # Z = model(combined)
+    # Z = Tensor.cpu(Z).detach()
+    # print(np.shape(Z))
+    # Z = model(combined)
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
-    ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
+    ax.plot_surface(X, Y, pls, rstride=1, cstride=1, cmap=cm.coolwarm, linewidth=0, antialiased=False, zorder=0)
     ax.set_xlabel('x1')
     ax.set_ylabel('x2')
     ax.set_zlabel('y')
@@ -224,7 +244,8 @@ def getWeightFitness(individual):
     weights = np.asarray(weights) # create array of weights as real numbers
     inputWeightsIntoNetwork(weights, model) # update model with new weights
     out = model(training[0]) # input training data and predict network output based on data
-    loss = loss_func(out, training[1]) # # compare output with labeled data
+    loss = loss_func(out.reshape(-1), training[1]) # # compare output with labeled data
+    # print(out)
     return loss.item(),
 
 # Implements lamarckian learning local search on each individual
@@ -235,17 +256,20 @@ def lamarckianOptimize(individual):
     reshaped = individual.reshape(67, 30) # reshape individual to 67x30
     weights = []
     for ind in reshaped:
-        ind = chrom2real(ind) # convert weights to real number
+        ind = chrom2real(ind)
+        if ind < -20:
+            ind = -20
+        elif ind > 20:
+            ind = 20# convert weights to real number
         weights.append(ind)
     weights = np.asarray(weights)
-    # print("original weights: ", extractWeightsOutOfNetwork(model))
     inputWeightsIntoNetwork(weights, model) # input weights into network
     y = model(training[0])
     originalLoss = loss_func(y, training[1]) # calculate loss
     i = 0
     loss = 0
     updatedWeights = extractWeightsOutOfNetwork(model) # extract weights from
-    optimizer = torch.optim.Rprop(model.parameters(), lr=0.005) # intialize RProp optimizer
+    optimizer = torch.optim.Rprop(model.parameters(), lr=0.05) # intialize RProp optimizer
     while i < 30: # run 30 iterations of optimization to find better weights
         out = model(training[0]) # input training data and predict network output based on data
         loss = loss_func(out, training[1]) # compare output with labeled data
@@ -268,20 +292,31 @@ def baldwinianLearning(individual):
     weights = []
     for ind in reshaped:
         ind = chrom2real(ind) # convert weights to real number
+        if ind < -20:
+            ind = -20
+        elif ind > 20:
+            ind = 20
         weights.append(ind)
     weights = np.asarray(weights)
     inputWeightsIntoNetwork(weights, model) # input weights into network
     i = 0
     loss = 0
     y = model(training[0])
-    originalLoss = loss_func(y, training[1]) # calculate loss
-    optimizer = torch.optim.Rprop(model.parameters(), lr=0.005) # intialize RProp optimizer
+    originalLoss = loss_func(y.reshape(-1), training[1]) # calculate loss
+    optimizer = torch.optim.Rprop(model.parameters(), lr=0.05) # intialize RProp optimizer
     while i < 30:   
         optimizer.zero_grad() # clear gradients for next train
         out = model(training[0]) # input training data and predict network output based on data
-        loss = loss_func(out, training[1]) # compare output with labeled data
-        loss.backward() # backpropagation, compute gradients
+        loss = loss_func(out.reshape(-1), training[1]) # compare output with labeled data
+        loss.backward(retain_graph=True) # backpropagation, compute gradients
         optimizer.step() # apply gradients
+        extractWeights = extractWeightsOutOfNetwork(model)
+        for i in range(len(extractWeights)):
+            if extractWeights[i] < -20:
+                extractWeights[i] = -20
+            elif extractWeights[i] > 20:
+                extractWeights[i] = 20
+        inputWeightsIntoNetwork(extractWeights, model)
         i += 1
         if originalLoss > loss: # update original loss if loss result is better
             originalLoss = loss
@@ -390,17 +425,20 @@ def main(x, boolean):
 #         sep=separatevariables(individ)
 #         print(sep[0],sep[1])
 
-    # Evaluate the entire population
-    fitnesses = list(map(toolbox.evaluate, pop))
-    #print(fitnesses)
+    # # Evaluate the entire population
+    # fitnesses = list(map(toolbox.evaluate, pop))
+    # #print(fitnesses)
+    # for ind, fit in zip(pop, fitnesses):
+    #     #print(ind, fit)
+    #     ind.fitness.values = fit
+    fitnesses = list(map(baldwinianLearning, pop))
     for ind, fit in zip(pop, fitnesses):
-        #print(ind, fit)
         ind.fitness.values = fit
-    
     print("  Evaluated %i individuals" % len(pop))
     # Extracting all the fitnesses of 
     fits = [ind.fitness.values[0] for ind in pop]
     bestInitial = tools.selBest(pop, 1)[0].fitness.values[0]
+    # arr.append(bestInitial)
     # Variable keeping track of the number of generations
     g = 0
     # print(fitnesses)
@@ -417,13 +455,13 @@ def main(x, boolean):
         # Run baldwinian learning on each generation
         else:
             fitnesses = list(map(baldwinianLearning, pop))
-            
+                
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
         
         best_ind = tools.selBest(pop, 1)[0]
         fitnessBest = best_ind.fitness.values[0]
-        arr.append(fitnessBest)    
+        arr.append(fitnessBest) 
         
         g = g + 1
         print("-- Generation %i --" % g)
@@ -435,7 +473,6 @@ def main(x, boolean):
 #         for individ in offspring:
 #             print(individ)
 
-    
         # Apply crossover and mutation on the offspring
         # make pairs of offspring for crossing over
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
@@ -459,38 +496,55 @@ def main(x, boolean):
                 del mutant.fitness.values
     
         # Evaluate the individuals with an invalid fitness
-        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = map(toolbox.evaluate, invalid_ind)
-        for ind, fit in zip(invalid_ind, fitnesses):
-            ind.fitness.values = fit
+        # invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        # fitnesses = map(toolbox.evaluate, invalid_ind)
+        # for ind, fit in zip(invalid_ind, fitnesses):
+        #     ind.fitness.values = fit
         #print("  Evaluated %i individuals" % len(invalid_ind))
         
-        # The population is entirely replaced by the offspring
+        # The population is entirely replaced by the offspring   
+
         pop[:] = offspring
-        
+
+        # if g % 1000 == 0:
+        #     # check if yikes is empty
+        #     if len(yikes) == 0:
+        #         yikes.append(arr[-1])
+        #         continue
+        #     if yikes[-1] == arr[-1]:
+        #         break
+        #     yikes.append(arr[-1])
+            
     if boolean is True:
         np.save('lamarckian', arr)
     else:
         np.save('baldwinian', arr)
 
 if __name__ == "__main__":
+    # set random seed
+    random.seed(1)
     x = toolbox.population(n=popSize)
     x2 = copy.deepcopy(x)
     main(x, True)
-    # neuralNetwork3DSurfacePlot()
+    plot3D()
+    neuralNetwork3DSurfacePlot()
+    plot(arr)
+    # print(arr[-1])
     arr = []
     model = torch.load('model.pt').to(device)
     main(x2, False)
-    # neuralNetwork3DSurfacePlot()
-    print("================================================Extracting Weights out of Network================================================")
-    extracted = extractWeightsOutOfNetwork(model)
-    print(extracted)
-    print("================================================Converting weights to individual==============================================")
-    real = real2Chrom(extracted)
-    print(real)
+    neuralNetwork3DSurfacePlot()
+    plot(arr)
+    print(arr[-1])
+    # print("================================================Extracting Weights out of Network================================================")
+    # extracted = extractWeightsOutOfNetwork(model)
+    # print(extracted)
+    # print("================================================Converting weights to individual==============================================")
+    # real = real2Chrom(extracted)
+    # print(real)
     l = np.load('lamarckian.npy')
     b = np.load('baldwinian.npy')
     print(l)
     print(b)
     plotLearning(l, b)
-    plot(b)
+    # plot(b)
